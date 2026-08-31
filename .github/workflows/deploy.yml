@@ -52,7 +52,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error::缺少 GitHub Secret CLOUDFLARE_API_TOKEN。在仓库 Settings → Secrets and variables → Actions 中添加，权限使用 Cloudflare 的 Edit Cloudflare Workers 模板，并包含 D1 编辑。"
+            echo "::error::缺少 GitHub Secret CLOUDFLARE_API_TOKEN。在仓库 Settings → Secrets and variables → Actions 中添加，权限使用 Cloudflare 的 Edit Cloudflare Workers 模板。"
             exit 1
           fi
       - run: npm ci

@@ -14,8 +14,10 @@ function wrangler(args) {
   return spawnSync(process.execPath, [wranglerBin, ...args], { stdio: 'inherit', env: wranglerEnv })
 }
 
-const migrate = wrangler(['d1', 'migrations', 'apply', 'DB', '--remote'])
-if (migrate.status) process.exit(migrate.status ?? 1)
+if (process.env.CF_APPLY_MIGRATIONS === '1') {
+  const migrate = wrangler(['d1', 'migrations', 'apply', 'DB', '--remote'])
+  if (migrate.status) process.exit(migrate.status ?? 1)
+}
 
 if (skipSecrets) {
   console.log('CI 部署：保留线上已有 ADMIN_KEY_HASH，不读取本机口令文件。')

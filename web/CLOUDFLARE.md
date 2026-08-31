@@ -81,12 +81,13 @@ Pull Request 只跑检查，不发布。也可在 Actions 页手动运行 **Depl
 GitHub 只需要一个仓库 Secret：`CLOUDFLARE_API_TOKEN`。不要把 Token、后台口令或 `AGENTS.md` 写进仓库。
 
 1. 打开 [Account API tokens](https://dash.cloudflare.com/0b6decfbed0f3439726d7ded971b57e5/api-tokens)，创建 Token。
-2. 权限模板选 **Edit Cloudflare Workers**；若模板不含 D1，再补 **D1 Edit**。把范围限制在当前账号。
+2. 权限模板选 **Edit Cloudflare Workers**，把范围限制在当前账号。该模板足够发布 Worker 和静态资源；不必勾选 D1。
 3. 在 GitHub 仓库 **Settings → Secrets and variables → Actions** 添加 `CLOUDFLARE_API_TOKEN`。可选添加 `CLOUDFLARE_ACCOUNT_ID`（`0b6decfbed0f3439726d7ded971b57e5`）；`wrangler.jsonc` 里已有该值。
 4. 或在本机执行：`gh secret set CLOUDFLARE_API_TOKEN -R CengSin/my-face`，粘贴 Token 后回车。
 5. 打开 [Actions](https://github.com/CengSin/my-face/actions) 手动运行一次 **Deploy Cloudflare**，确认部署成功。
 
 CI 使用 `GITHUB_ACTIONS` 跳过本机口令文件，线上 `ADMIN_KEY_HASH` 保持不变。轮换后台口令仍在本机执行 `npm run cf:credentials` 和 `npm run cf:secret`。
+表结构变更不要指望 GitHub Actions：在本机执行 `npm run cf:migrate:remote`。Edit Cloudflare Workers 模板不能查询 D1，强行在 CI 跑迁移会返回 7403。
 
 ## 备份与更新
 
