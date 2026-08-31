@@ -18,7 +18,7 @@
     "cf:migrate:local": "wrangler d1 migrations apply DB --local",
     "cf:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "cf:check": "wrangler deploy --dry-run --outdir .cloudflare-build",
-    "test:cloudflare": "npm run cf:check && node --test cloudflare/tests/*.test.mjs",
+    "test:cloudflare": "npm run build && npm run cf:check && node --test cloudflare/tests/*.test.mjs",
     "cf:deploy": "npm run build && node cloudflare/deploy.mjs",
     "cf:preview": "npm run cf:check && node cloudflare/test-preview.mjs",
     "cf:verify": "node cloudflare/verify-live.mjs"
