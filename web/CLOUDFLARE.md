@@ -73,6 +73,21 @@ Cloudflare 使用单独生成的随机口令，不使用本地手选密码。
 检查登录、私有草稿、发布与撤回，以及刷新后文章持久化；不应将验收文章留在公开首页。
 Cloudflare 本地测试不能代替公网访问测试，也不代表账号已完成部署。
 
+## GitHub Actions 自动部署
+
+`main` 分支每次推送会先跑 lint / 测试，再部署到 Cloudflare，不会重置 D1，也不会改后台口令。
+Pull Request 只跑检查，不发布。也可在 Actions 页手动运行 **Deploy Cloudflare**。
+
+GitHub 只需要一个仓库 Secret：`CLOUDFLARE_API_TOKEN`。不要把 Token、后台口令或 `AGENTS.md` 写进仓库。
+
+1. 打开 [Account API tokens](https://dash.cloudflare.com/0b6decfbed0f3439726d7ded971b57e5/api-tokens)，创建 Token。
+2. 权限模板选 **Edit Cloudflare Workers**；若模板不含 D1，再补 **D1 Edit**。把范围限制在当前账号。
+3. 在 GitHub 仓库 **Settings → Secrets and variables → Actions** 添加 `CLOUDFLARE_API_TOKEN`。可选添加 `CLOUDFLARE_ACCOUNT_ID`（`0b6decfbed0f3439726d7ded971b57e5`）；`wrangler.jsonc` 里已有该值。
+4. 或在本机执行：`gh secret set CLOUDFLARE_API_TOKEN -R CengSin/my-face`，粘贴 Token 后回车。
+5. 打开 [Actions](https://github.com/CengSin/my-face/actions) 手动运行一次 **Deploy Cloudflare**，确认部署成功。
+
+CI 使用 `GITHUB_ACTIONS` 跳过本机口令文件，线上 `ADMIN_KEY_HASH` 保持不变。轮换后台口令仍在本机执行 `npm run cf:credentials` 和 `npm run cf:secret`。
+
 ## 备份与更新
 
 ```bash
