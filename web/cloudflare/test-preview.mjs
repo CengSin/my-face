@@ -1,7 +1,7 @@
 // Disposable local UI fixture: no real key, no real articles, no Cloudflare network bindings.
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { createHash } from 'node:crypto'
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -20,7 +20,11 @@ const mf = new Miniflare(convertV4MiniflareOptions({
     assetConfig: { not_found_handling: 'single-page-application' } },
 }))
 const db = await mf.getD1Database('DB')
-const schema = readFileSync('cloudflare/migrations/0001_journal.sql', 'utf8').split(';').map((s) => s.trim()).filter(Boolean)
+const schema = readdirSync('cloudflare/migrations')
+  .filter((name) => name.endsWith('.sql'))
+  .sort()
+  .flatMap((name) => readFileSync(`cloudflare/migrations/${name}`, 'utf8')
+    .split(';').map((s) => s.trim()).filter(Boolean))
 await db.batch(schema.map((s) => db.prepare(s)))
 console.log('隔离 Cloudflare 预览：http://127.0.0.1:8787；测试口令为 43 个 p，仅此预览有效。')
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, async () => {

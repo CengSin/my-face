@@ -215,8 +215,14 @@ export default {
       }
       return response
     } catch (error) {
-      return json(error instanceof HttpError ? error.status : 500, {
-        error: error instanceof HttpError ? error.message : '保存服务暂时出错，请稍后重试。未保存的内容不会清空。',
+      const imageStoreMissing = error instanceof Error &&
+        /no such table:\s*images/i.test(error.message)
+      return json(error instanceof HttpError ? error.status : imageStoreMissing ? 503 : 500, {
+        error: error instanceof HttpError
+          ? error.message
+          : imageStoreMissing
+            ? '图片存储尚未初始化，请先应用最新数据库迁移。'
+            : '保存服务暂时出错，请稍后重试。未保存的内容不会清空。',
       })
     }
   },

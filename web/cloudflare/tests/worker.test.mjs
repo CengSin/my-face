@@ -55,6 +55,19 @@ async function start(directory, secret = keyHash) {
 }
 const input = { title: '隔离测试日记', content: '## 晚风\n\n**很好**，一切都慢下来。', weather: 'cloudy', date: '2026-08-30', status: 'draft' }
 
+test('missing image migration returns an actionable service error', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'journal-image-migration-test-'))
+  const app = await start(directory)
+  t.after(async () => { await app.mf.dispose(); rmSync(directory, { recursive: true, force: true }) })
+  await app.request('/api/login', { method: 'POST', body: { password: key } })
+  await app.db.prepare('DROP TABLE images').run()
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  const response = await app.request('/api/admin/images', { method: 'POST', body: png,
+    headers: { 'Content-Type': 'image/png' } })
+  assert.equal(response.status, 503)
+  assert.match(response.data.error, /图片存储尚未初始化/)
+})
+
 test('real Worker/D1: login, private drafts, publish, conflict, restart, revoke and logout', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'journal-worker-test-'))
   let app = await start(directory)

@@ -259,7 +259,7 @@ export default function Admin() {
       )
     })
   }
-  async function uploadImage(file: File) {
+  async function uploadImage(file: File, source: 'picker' | 'paste' = 'picker') {
     const textarea = textRef.current
     if (imageUploading) return
     const start = textarea?.selectionStart ?? draft.content.length
@@ -292,7 +292,11 @@ export default function Admin() {
         ...previous,
         content: left + markdown + right,
       }))
-      setNotice('图片已上传，并插入到 Markdown 正文。')
+      setNotice(
+        source === 'paste'
+          ? '图片已粘贴，并插入到 Markdown 正文。'
+          : '图片已上传，并插入到 Markdown 正文。',
+      )
       requestAnimationFrame(() => {
         const nextTextarea = textRef.current
         if (!nextTextarea) return
@@ -654,8 +658,18 @@ export default function Admin() {
                     spellCheck={false}
                     value={draft.content}
                     onChange={(event) => update('content', event.target.value)}
+                    onPaste={(event) => {
+                      const item = Array.from(event.clipboardData.items).find(
+                        (item) =>
+                          item.kind === 'file' && item.type.startsWith('image/'),
+                      )
+                      const file = item?.getAsFile()
+                      if (!file) return
+                      event.preventDefault()
+                      void uploadImage(file, 'paste')
+                    }}
                     placeholder={
-                      '从这里开始，慢慢写。\n\n## 今天的小事\n\n用 **加粗** 留下重点，\n用 > 引用收藏一句话。\n\nMarkdown 会把这些文字变成一篇文章。'
+                      '从这里开始，慢慢写。\n\n## 今天的小事\n\n用 **加粗** 留下重点，\n用 > 引用收藏一句话，\n也可以直接粘贴一张图片。\n\nMarkdown 会把这些文字变成一篇文章。'
                     }
                     maxLength={100000}
                   />
