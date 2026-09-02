@@ -277,7 +277,7 @@ export default function App({
           <div
             className="scene-panel"
             role="region"
-            aria-label={`${mood.weatherLabel}天的心情小岛`}
+            aria-label={`${mood.weatherLabel}天的心情小岛，可拖动旋转`}
           >
             <div className="scene-halo" />
             <div className="scene-top">
@@ -285,7 +285,7 @@ export default function App({
                 <span className="status-dot" />
                 我的心情小岛
               </span>
-              <span className="scene-coordinate">SOMEWHERE, WITHIN.</span>
+              <span className="scene-coordinate">拖动旋转 · DRAG TO LOOK AROUND</span>
             </div>
             <Suspense
               fallback={<div className="world-loading">小岛正在醒来…</div>}

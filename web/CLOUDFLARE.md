@@ -41,7 +41,7 @@ MCP OAuth 与 Wrangler OAuth 为不同客户端，不共享登录状态。
 在 `web` 目录执行。使用自己的 Cloudflare 账号，不上传 AGENTS.md、data 目录或本地配置凭证。
 
 1. 执行 `npx wrangler d1 create my-face-journal`。将返回的 `database_id` 填入 `wrangler.jsonc`；不要使用占位 ID。账号有多个账户时，先明确 `account_id`。
-2. 执行 `npm run cf:migrate:remote`，创建表结构，不清空已有文章。
+2. 执行 `npm run cf:migrate:remote`，创建或升级表结构（包括文章图片表），不清空已有文章。代码部署前必须先应用尚未执行的迁移。
 3. 执行 `npm run cf:credentials`，生成 256 位随机口令。口令保存在 `data/cloudflare-admin.local.json`，文件权限为 0600，且已加入忽略规则。已有文件不会被覆盖。
 4. 如需迁移本地文章，执行 `npm run cf:export`，然后执行 `npx wrangler d1 execute DB --remote --file data/cloudflare-posts.local.sql`。草稿仍为草稿；导出不包含本地密码或会话，重复导入不会覆盖相同 ID 的线上文章。
 5. 执行 `npm run cf:deploy`。它在同一次部署中上传 Worker、构建后的静态文件和 `ADMIN_KEY_HASH` Secret，原始口令不会上传。

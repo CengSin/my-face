@@ -228,11 +228,15 @@
   text-decoration: underline;
 }
 .admin-layout {
-  max-width: 1560px;
+  max-width: 1760px;
   margin: auto;
   display: grid;
   grid-template-columns: 276px minmax(0, 1fr);
   min-height: calc(100vh - 89px);
+  transition: grid-template-columns 0.22s ease;
+}
+.admin-layout.sidebar-collapsed {
+  grid-template-columns: 58px minmax(0, 1fr);
 }
 .post-sidebar {
   padding: 30px 22px 20px;
@@ -247,6 +251,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+.sidebar-title > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 .sidebar-title h2 {
   font-size: 13px;
@@ -266,6 +275,36 @@
   color: #516f3e;
   font-size: 10px;
   min-height: 36px;
+}
+.sidebar-collapse-button,
+.sidebar-rail button {
+  border: 1px solid #d2dcc5;
+  border-radius: 5px;
+  background: #f7f9f3;
+  color: #718166;
+  min-width: 36px;
+  min-height: 36px;
+}
+.post-sidebar.collapsed {
+  padding: 22px 10px;
+  align-items: center;
+}
+.sidebar-rail {
+  position: sticky;
+  top: 18px;
+}
+.sidebar-rail button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 7px;
+  font-size: 15px;
+}
+.sidebar-rail button span {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.16em;
+  font-size: 9px;
 }
 .post-search {
   width: 100%;
@@ -508,6 +547,20 @@
   color: #8c997e;
   font-size: 15px;
 }
+.image-file-input {
+  display: none;
+}
+.format-actions .image-upload-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  padding-inline: 8px;
+  font-size: 10px;
+}
+.format-actions .image-upload-button > span {
+  font-size: 16px;
+}
 .format-actions button:hover {
   background: #eaf0e2;
   border-radius: 4px;
@@ -528,7 +581,7 @@
 .editor-panes {
   display: grid;
   grid-template-columns: 1fr;
-  min-height: 350px;
+  min-height: clamp(440px, 58vh, 680px);
 }
 .pane-split {
   grid-template-columns: 1fr 1fr;
@@ -538,7 +591,7 @@
   display: block;
   width: 100%;
   min-width: 0;
-  min-height: 350px;
+  min-height: clamp(440px, 58vh, 680px);
   border: 0;
   background: #fff;
   padding: 23px;
@@ -852,7 +905,7 @@
   }
   .pane-split .markdown-input {
     border-right: 0;
-    min-height: 300px;
+    min-height: 390px;
   }
 }
 @media (max-width: 700px) {
@@ -885,6 +938,25 @@
     border-bottom: 1px solid #dfe6d5;
     padding: 20px;
     gap: 14px;
+  }
+  .admin-layout.sidebar-collapsed .post-sidebar {
+    min-height: 50px;
+    padding: 7px 20px;
+    align-items: stretch;
+  }
+  .sidebar-rail {
+    position: static;
+  }
+  .sidebar-rail button {
+    min-height: 38px;
+    flex-direction: row;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+  }
+  .sidebar-rail button span {
+    writing-mode: horizontal-tb;
+    letter-spacing: 0.08em;
   }
   .post-list {
     flex-direction: row;
@@ -964,6 +1036,9 @@
     min-width: 29px;
     min-height: 40px;
   }
+  .format-actions .image-upload-button {
+    padding-inline: 7px;
+  }
   .editor-tabs button {
     padding: 6px 8px;
     min-height: 35px;
@@ -975,10 +1050,10 @@
   }
   .markdown-input {
     font-size: 13px !important;
-    min-height: 300px;
+    min-height: 360px;
   }
   .editor-panes {
-    min-height: 300px;
+    min-height: 360px;
   }
   .editor-bottomline {
     font-size: 7px;

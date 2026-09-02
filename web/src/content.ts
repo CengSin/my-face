@@ -24,6 +24,12 @@ export type Session = {
   canSetup?: boolean
   authMode?: 'access-key'
 }
+export type UploadedImage = {
+  id: string
+  url: string
+  mime_type: string
+  size: number
+}
 
 export const weatherOptions = [
   {

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash, randomBytes } from 'node:crypto'
-import { readFileSync, mkdtempSync, rmSync, mkdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, mkdtempSync, rmSync, mkdirSync, statSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -11,7 +11,11 @@ import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 const origin = 'https://journal.example'
 const key = randomBytes(32).toString('base64url')
 const keyHash = createHash('sha256').update(key).digest('hex')
-const schema = readFileSync('cloudflare/migrations/0001_journal.sql', 'utf8').split(';').map((s) => s.trim()).filter(Boolean)
+const schema = readdirSync('cloudflare/migrations')
+  .filter((name) => name.endsWith('.sql'))
+  .sort()
+  .flatMap((name) => readFileSync(`cloudflare/migrations/${name}`, 'utf8')
+    .split(';').map((s) => s.trim()).filter(Boolean))
 async function start(directory, secret = keyHash) {
   const mf = new Miniflare(convertV4MiniflareOptions({
     modules: true,
@@ -38,12 +42,14 @@ async function start(directory, secret = keyHash) {
         method,
         headers: { 'Content-Type': 'application/json', Origin: origin, 'X-Journal-Request': '1',
           'CF-Connecting-IP': '192.0.2.10', ...(auth ? { Cookie: cookie } : {}), ...headers },
-        ...(body !== undefined ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}),
+        ...(body !== undefined ? { body: typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body) } : {}),
       })
       if (response.headers.has('Set-Cookie')) cookie = response.headers.get('Set-Cookie').split(';')[0]
       const type = response.headers.get('Content-Type') || ''
       return { status: response.status, headers: response.headers,
-        data: type.includes('json') ? await response.json() : await response.text() }
+        data: type.includes('json') ? await response.json()
+          : type.startsWith('image/') ? new Uint8Array(await response.arrayBuffer())
+          : await response.text() }
     },
   }
 }
@@ -61,6 +67,18 @@ test('real Worker/D1: login, private drafts, publish, conflict, restart, revoke 
   assert.match(login.headers.get('Set-Cookie'), /^__Host-journal_session=/)
   assert.match(login.headers.get('Set-Cookie'), /HttpOnly; SameSite=Strict; Max-Age=43200; Secure/)
   assert.equal((await app.request('/api/session')).data.authenticated, true)
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00])
+  assert.equal((await app.request('/api/admin/images', { method: 'POST', auth: false,
+    body: png, headers: { 'Content-Type': 'image/png' } })).status, 401)
+  const upload = await app.request('/api/admin/images', { method: 'POST', body: png,
+    headers: { 'Content-Type': 'image/png' } })
+  assert.equal(upload.status, 201)
+  const publicImage = await app.request(upload.data.image.url, { auth: false })
+  assert.equal(publicImage.status, 200)
+  assert.equal(publicImage.headers.get('Content-Type'), 'image/png')
+  assert.deepEqual(publicImage.data, png)
+  assert.equal((await app.request('/api/admin/images', { method: 'POST',
+    body: new Uint8Array([0x3c, 0x73, 0x76, 0x67]), headers: { 'Content-Type': 'image/png' } })).status, 415)
   const draft = (await app.request('/api/admin/posts', { method: 'POST', body: input })).data.post
   assert.equal(draft.version, 1)
   assert.deepEqual((await app.request('/api/posts', { auth: false })).data.posts, [])
@@ -88,6 +106,7 @@ test('real Worker/D1: login, private drafts, publish, conflict, restart, revoke 
   await app.mf.dispose()
   app = await start(directory)
   assert.equal((await app.request('/api/posts')).data.posts.length, 1)
+  assert.equal((await app.request(upload.data.image.url, { auth: false })).status, 200)
   assert.equal((await app.request('/api/session', { headers: { Cookie: savedCookie } })).data.authenticated, true)
   await app.request('/api/login', { method: 'POST', body: { password: key } })
   assert.equal((await app.request(`/api/admin/posts/${draft.id}`, { method: 'PUT', body: { ...input, version: 2 } })).status, 200)

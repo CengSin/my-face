@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import Markdown from '../src/Markdown.tsx'
 import { safeMarkdownUrl } from '../src/markdown-url.ts'
 import { buildDays, todayDate, readingMinutes } from '../src/content.ts'
+import { validateImage } from '../shared/images.mjs'
 
 test('today always has an empty entry and latest published update decides daily mood', () => {
   const posts = [
@@ -59,4 +60,22 @@ test('Markdown supports GFM while scripts, raw HTML and unsafe URLs stay inert',
   ])
     assert.equal(safeMarkdownUrl(unsafe), '')
   assert.equal(safeMarkdownUrl('https://example.com'), 'https://example.com')
+  const localImage = renderToStaticMarkup(
+    createElement(Markdown, null, '![海边](/api/images/123e4567-e89b-12d3-a456-426614174000)'),
+  )
+  assert.match(localImage, /<img src="\/api\/images\//)
+})
+
+test('uploaded images are identified by file signature, not only the request header', () => {
+  assert.equal(
+    validateImage(new Uint8Array([0xff, 0xd8, 0xff, 0xdb]), 'image/jpeg'),
+    'image/jpeg',
+  )
+  assert.throws(
+    () => validateImage(new Uint8Array([0x3c, 0x73, 0x76, 0x67]), 'image/png'),
+    /仅支持 JPEG、PNG、GIF 或 WebP/,
+  )
+  const oversized = new Uint8Array(1_500_001)
+  oversized.set([0xff, 0xd8, 0xff])
+  assert.throws(() => validateImage(oversized, 'image/jpeg'), /不能超过 1.5 MB/)
 })

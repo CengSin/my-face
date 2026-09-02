@@ -1,4 +1,5 @@
 import { HttpError, validatePost } from '../shared/validation.mjs'
+import { MAX_IMAGE_BYTES, validateImage } from '../shared/images.mjs'
 
 const SESSION_SECONDS = 12 * 60 * 60
 const BODY_LIMIT = 450000
@@ -51,6 +52,20 @@ async function readJson(request) {
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length }
   try { return JSON.parse(new TextDecoder().decode(bytes)) }
   catch { throw new HttpError(400, '无法读取请求内容。') }
+}
+
+async function readImage(request) {
+  if (Number(request.headers.get('Content-Length')) > MAX_IMAGE_BYTES)
+    throw new HttpError(413, '图片不能超过 1.5 MB，请压缩后再上传。')
+  const data = new Uint8Array(await request.arrayBuffer())
+  const declaredType = (request.headers.get('Content-Type') || '').split(';')[0].trim()
+  return {
+    data,
+    mimeType: validateImage(
+      data,
+      declaredType === 'application/octet-stream' ? '' : declaredType,
+    ),
+  }
 }
 
 async function api(request, env, url, local) {
@@ -118,8 +133,29 @@ async function api(request, env, url, local) {
     if (!post) throw new HttpError(404, '这篇文章暂未发布或已转为草稿。')
     return json(200, { post })
   }
+  if (method === 'GET' && /^\/api\/images\/[A-Za-z0-9-]+$/.test(path)) {
+    const image = await db.prepare('SELECT mime_type, data FROM images WHERE id = ?')
+      .bind(path.split('/').at(-1)).first()
+    if (!image) throw new HttpError(404, '图片不存在。')
+    return new Response(new Uint8Array(image.data), {
+      headers: {
+        ...securityHeaders,
+        'Content-Type': image.mime_type,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      },
+    })
+  }
   if (path.startsWith('/api/admin/')) {
     if (!await authenticated()) throw new HttpError(401, '登录已过期，请重新登录。未保存的内容仍保留在编辑器中。')
+    if (method === 'POST' && path === '/api/admin/images') {
+      const { data, mimeType } = await readImage(request)
+      const id = crypto.randomUUID()
+      const size = data.byteLength
+      await db.prepare(`INSERT INTO images (id, mime_type, data, size, created_at)
+        VALUES (?, ?, ?, ?, ?)`)
+        .bind(id, mimeType, data.buffer, size, new Date().toISOString()).run()
+      return json(201, { image: { id, url: `/api/images/${id}`, mime_type: mimeType, size } })
+    }
     if (method === 'GET' && path === '/api/admin/posts') {
       const { results } = await db.prepare('SELECT * FROM posts ORDER BY updated_at DESC, id DESC').all()
       return json(200, { posts: results })

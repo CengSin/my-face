@@ -463,6 +463,12 @@ h1 {
   height: 100%;
   display: block;
   z-index: 1;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+.world.is-dragging {
+  cursor: grabbing;
 }
 .world-loading {
   position: absolute;

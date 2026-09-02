@@ -20,7 +20,7 @@ export default function Markdown({ children }: { children: string }) {
             </a>
           ),
           img: ({ src, alt }) =>
-            src && /^https?:\/\//.test(src) ? (
+            src && (/^https?:\/\//.test(src) || /^\/api\/images\/[A-Za-z0-9-]+$/.test(src)) ? (
               <img
                 src={src}
                 alt={alt || ''}

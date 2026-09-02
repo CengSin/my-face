@@ -1,4 +1,5 @@
 import { HttpError, validatePost } from '../shared/validation.mjs'
+import { MAX_IMAGE_BYTES, validateImage } from '../shared/images.mjs'
 export { validatePost } from '../shared/validation.mjs'
 import { createServer } from 'node:http'
 import { DatabaseSync } from 'node:sqlite'
@@ -42,6 +43,28 @@ async function readJson(req) {
   }
 }
 
+async function readImage(req) {
+  if (Number(req.headers['content-length']) > MAX_IMAGE_BYTES)
+    throw new HttpError(413, '图片不能超过 1.5 MB，请压缩后再上传。')
+  let size = 0
+  const chunks = []
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > MAX_IMAGE_BYTES)
+      throw new HttpError(413, '图片不能超过 1.5 MB，请压缩后再上传。')
+    chunks.push(chunk)
+  }
+  const data = Buffer.concat(chunks)
+  const declaredType = (req.headers['content-type'] || '').split(';')[0].trim()
+  return {
+    data,
+    mimeType: validateImage(
+      data,
+      declaredType === 'application/octet-stream' ? '' : declaredType,
+    ),
+  }
+}
+
 export function createJournalServer({
   dbPath,
   origins = [],
@@ -60,6 +83,10 @@ export function createJournalServer({
       id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
       date TEXT NOT NULL, weather TEXT NOT NULL, status TEXT NOT NULL,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE TABLE IF NOT EXISTS images (
+      id TEXT PRIMARY KEY, mime_type TEXT NOT NULL, data BLOB NOT NULL,
+      size INTEGER NOT NULL, created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS posts_by_date ON posts(status, date DESC, updated_at DESC);`)
 
@@ -212,8 +239,39 @@ export function createJournalServer({
         if (!post) throw new HttpError(404, '这篇文章暂未发布或已转为草稿。')
         return send(res, 200, { post })
       }
+      if (req.method === 'GET' && /^\/api\/images\/[A-Za-z0-9-]+$/.test(path)) {
+        const image = db
+          .prepare('SELECT mime_type, data FROM images WHERE id = ?')
+          .get(path.split('/').at(-1))
+        if (!image) throw new HttpError(404, '图片不存在。')
+        res.writeHead(200, {
+          'Content-Type': image.mime_type,
+          'Content-Length': image.data.byteLength,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        })
+        return res.end(image.data)
+      }
       if (path.startsWith('/api/admin/')) {
         requireAuth(req)
+        if (req.method === 'POST' && path === '/api/admin/images') {
+          const { data, mimeType } = await readImage(req)
+          const id = randomUUID()
+          db.prepare('INSERT INTO images VALUES (?, ?, ?, ?, ?)').run(
+            id,
+            mimeType,
+            data,
+            data.byteLength,
+            new Date().toISOString(),
+          )
+          return send(res, 201, {
+            image: {
+              id,
+              url: `/api/images/${id}`,
+              mime_type: mimeType,
+              size: data.byteLength,
+            },
+          })
+        }
         if (req.method === 'GET' && path === '/api/admin/posts') {
           return send(res, 200, {
             posts: db

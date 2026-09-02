@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS images (
+  id TEXT PRIMARY KEY,
+  mime_type TEXT NOT NULL,
+  data BLOB NOT NULL,
+  size INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);

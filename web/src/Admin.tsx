@@ -6,6 +6,7 @@ import {
   type Post,
   type PostInput,
   type Session,
+  type UploadedImage,
 } from './content'
 import Markdown from './Markdown'
 import './writing.css'
@@ -141,7 +142,10 @@ export default function Admin() {
   const [search, setSearch] = useState('')
   const [pane, setPane] = useState<'write' | 'preview' | 'split'>('split')
   const [reauth, setReauth] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [imageUploading, setImageUploading] = useState(false)
   const textRef = useRef<HTMLTextAreaElement>(null)
+  const imageRef = useRef<HTMLInputElement>(null)
   const confirmRef = useRef<HTMLDialogElement>(null)
   const pendingAction = useRef<(() => void) | null>(null)
   const dirty = !sameContent(draft, saved)
@@ -180,6 +184,7 @@ export default function Admin() {
       setSaved(next)
       setError('')
       setNotice('')
+      setSidebarCollapsed(true)
     }
     if (dirty) {
       pendingAction.current = action
@@ -254,6 +259,63 @@ export default function Admin() {
       )
     })
   }
+  async function uploadImage(file: File) {
+    const textarea = textRef.current
+    if (imageUploading) return
+    const start = textarea?.selectionStart ?? draft.content.length
+    const end = textarea?.selectionEnd ?? draft.content.length
+    const content = draft.content
+    const selected = content.slice(start, end).trim()
+    const filename = file.name.replace(/\.[^.]+$/, '') || '图片'
+    const alt = (selected || filename)
+      .replaceAll('\\', '\\\\')
+      .replaceAll('[', '\\[')
+      .replaceAll(']', '\\]')
+    setImageUploading(true)
+    setError('')
+    setNotice('')
+    try {
+      const { image } = await api<{ image: UploadedImage }>(
+        '/api/admin/images',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          body: file,
+        },
+      )
+      const left = content.slice(0, start)
+      const right = content.slice(end)
+      const leading = left && !left.endsWith('\n') ? '\n\n' : ''
+      const trailing = right && !right.startsWith('\n') ? '\n\n' : ''
+      const markdown = `${leading}![${alt}](${image.url})${trailing}`
+      setDraft((previous) => ({
+        ...previous,
+        content: left + markdown + right,
+      }))
+      setNotice('图片已上传，并插入到 Markdown 正文。')
+      requestAnimationFrame(() => {
+        const nextTextarea = textRef.current
+        if (!nextTextarea) return
+        nextTextarea.focus()
+        const cursor = left.length + markdown.length
+        nextTextarea.setSelectionRange(cursor, cursor)
+      })
+    } catch (error) {
+      setError((error as Error).message)
+      try {
+        const current = await api<Session>('/api/session')
+        if (!current.authenticated) {
+          setSession(current)
+          setReauth(true)
+        }
+      } catch {
+        /* Preserve all editor state on network failure. */
+      }
+    } finally {
+      setImageUploading(false)
+      if (imageRef.current) imageRef.current.value = ''
+    }
+  }
   const shown = posts.filter(
     (post) =>
       (filter === 'all' || post.status === filter) &&
@@ -315,85 +377,116 @@ export default function Admin() {
           </button>
         </div>
       </header>
-      <div className="admin-layout">
-        <aside className="post-sidebar">
-          <div className="sidebar-title">
-            <h2>
-              我的文章 <span>{posts.length}</span>
-            </h2>
-            <button
-              className="new-post-button"
-              onClick={() => choose(blankPost())}
-            >
-              ＋ 写一篇
-            </button>
-          </div>
-          <input
-            className="post-search"
-            aria-label="搜索文章标题"
-            placeholder="搜索写下的日子…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <div className="post-filters" aria-label="文章状态筛选">
-            {[
-              ['all', '全部'],
-              ['published', '已发布'],
-              ['draft', '草稿'],
-            ].map(([value, label]) => (
+      <div
+        className={`admin-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
+      >
+        <aside className={`post-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+          {sidebarCollapsed ? (
+            <div className="sidebar-rail">
               <button
-                key={value}
-                aria-pressed={filter === value}
-                onClick={() => setFilter(value)}
+                type="button"
+                aria-label="展开我的文章"
+                title="展开我的文章"
+                onClick={() => setSidebarCollapsed(false)}
               >
-                {label}
+                ☰ <span>文章</span>
               </button>
-            ))}
-          </div>
-          <div className="post-list">
-            {shown.length ? (
-              shown.map((post) => (
-                <button
-                  key={post.id}
-                  className={`post-list-item ${draft.id === post.id ? 'selected' : ''}`}
-                  onClick={() => choose(post)}
-                >
-                  <span className="post-list-date">
-                    {post.date}
-                    <span>
-                      {
-                        weatherOptions.find(
-                          (option) => option.value === post.weather,
-                        )?.symbol
-                      }
-                    </span>
-                  </span>
-                  <strong>{post.title}</strong>
-                  <small>
-                    <span className={`post-status ${post.status}`}>
-                      {post.status === 'published' ? '已发布' : '草稿'}
-                    </span>
-                  </small>
-                </button>
-              ))
-            ) : (
-              <div className="sidebar-empty">
-                <span>一页空白，也很好。</span>
-                <p>
-                  {search || filter !== 'all'
-                    ? '没有符合条件的文章。'
-                    : '从第一篇文章开始，收集你的天气。'}
-                </p>
+            </div>
+          ) : (
+            <>
+              <div className="sidebar-title">
+                <h2>
+                  我的文章 <span>{posts.length}</span>
+                </h2>
+                <div>
+                  <button
+                    className="new-post-button"
+                    onClick={() => choose(blankPost())}
+                  >
+                    ＋ 写一篇
+                  </button>
+                  <button
+                    className="sidebar-collapse-button"
+                    type="button"
+                    aria-label="折叠我的文章"
+                    title="折叠我的文章"
+                    onClick={() => setSidebarCollapsed(true)}
+                  >
+                    ←
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
-          <p className="sidebar-footnote">
-            文章保存到服务器数据库。
-            <br />
-            草稿只在你的写作室里可见。
-          </p>
+              <input
+                className="post-search"
+                aria-label="搜索文章标题"
+                placeholder="搜索写下的日子…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <div className="post-filters" aria-label="文章状态筛选">
+                {[
+                  ['all', '全部'],
+                  ['published', '已发布'],
+                  ['draft', '草稿'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    aria-pressed={filter === value}
+                    onClick={() => setFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="post-list">
+                {shown.length ? (
+                  shown.map((post) => (
+                    <button
+                      key={post.id}
+                      className={`post-list-item ${draft.id === post.id ? 'selected' : ''}`}
+                      onClick={() => choose(post)}
+                    >
+                      <span className="post-list-date">
+                        {post.date}
+                        <span>
+                          {
+                            weatherOptions.find(
+                              (option) => option.value === post.weather,
+                            )?.symbol
+                          }
+                        </span>
+                      </span>
+                      <strong>{post.title}</strong>
+                      <small>
+                        <span className={`post-status ${post.status}`}>
+                          {post.status === 'published' ? '已发布' : '草稿'}
+                        </span>
+                      </small>
+                    </button>
+                  ))
+                ) : (
+                  <div className="sidebar-empty">
+                    <span>一页空白，也很好。</span>
+                    <p>
+                      {search || filter !== 'all'
+                        ? '没有符合条件的文章。'
+                        : '从第一篇文章开始，收集你的天气。'}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <p className="sidebar-footnote">
+                文章保存到服务器数据库。
+                <br />
+                草稿只在你的写作室里可见。
+              </p>
+            </>
+          )}
         </aside>
-        <main className="editor-main">
+        <main
+          className="editor-main"
+          onFocusCapture={() => setSidebarCollapsed(true)}
+        >
           <div className="editor-heading">
             <div>
               <p className="writing-eyebrow">A SMALL NOTE TO THE WORLD</p>
@@ -424,7 +517,10 @@ export default function Admin() {
               />
             </section>
           )}
-          <fieldset className="editor-fields" disabled={busy || reauth}>
+          <fieldset
+            className="editor-fields"
+            disabled={busy || reauth || imageUploading}
+          >
             <label className="title-label">
               <span className="sr-only">文章标题</span>
               <input
@@ -510,6 +606,27 @@ export default function Admin() {
                   >
                     ☷
                   </button>
+                  <input
+                    ref={imageRef}
+                    className="image-file-input"
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
+                    aria-label="选择要上传的图片"
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0]
+                      if (file) void uploadImage(file)
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="image-upload-button"
+                    aria-label="上传图片并插入正文"
+                    title="上传图片并插入正文（最大 1.5 MB）"
+                    onClick={() => imageRef.current?.click()}
+                  >
+                    <span aria-hidden="true">▧</span>
+                    {imageUploading ? '上传中…' : '图片'}
+                  </button>
                 </div>
                 <div className="editor-tabs">
                   {[
@@ -561,7 +678,7 @@ export default function Admin() {
                 )}
               </div>
               <div className="editor-bottomline">
-                <span>MARKDOWN · 支持标题、列表、代码与表格</span>
+                <span>MARKDOWN · 支持标题、列表、图片、代码与表格</span>
                 <span>{draft.content.length.toLocaleString()} 字符</span>
               </div>
             </div>

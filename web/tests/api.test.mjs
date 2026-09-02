@@ -51,12 +51,20 @@ async function start(dbPath = ':memory:', options = {}) {
           ...headers,
         },
         ...(body !== undefined
-          ? { body: typeof body === 'string' ? body : JSON.stringify(body) }
+          ? {
+              body:
+                typeof body === 'string' || body instanceof Uint8Array
+                  ? body
+                  : JSON.stringify(body),
+            }
           : {}),
       })
       if (response.headers.has('set-cookie'))
         session = response.headers.get('set-cookie').split(';')[0]
-      const data = await response.json()
+      const type = response.headers.get('Content-Type') || ''
+      const data = type.includes('json')
+        ? await response.json()
+        : new Uint8Array(await response.arrayBuffer())
       return { status: response.status, data, headers: response.headers }
     },
   }
@@ -94,6 +102,42 @@ test('authenticated publishing workflow, drafts, validation and restart persiste
     409,
   )
   assert.equal(statSync(dbPath).mode & 0o777, 0o600)
+
+  const png = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,
+  ])
+  assert.equal(
+    (
+      await app.request('/api/admin/images', {
+        method: 'POST',
+        auth: false,
+        body: png,
+        headers: { 'Content-Type': 'image/png' },
+      })
+    ).status,
+    401,
+  )
+  const upload = await app.request('/api/admin/images', {
+    method: 'POST',
+    body: png,
+    headers: { 'Content-Type': 'image/png' },
+  })
+  assert.equal(upload.status, 201)
+  assert.match(upload.data.image.url, /^\/api\/images\/[a-f0-9-]+$/)
+  const publicImage = await app.request(upload.data.image.url, { auth: false })
+  assert.equal(publicImage.status, 200)
+  assert.equal(publicImage.headers.get('Content-Type'), 'image/png')
+  assert.deepEqual(publicImage.data, png)
+  assert.equal(
+    (
+      await app.request('/api/admin/images', {
+        method: 'POST',
+        body: new Uint8Array([0x3c, 0x73, 0x76, 0x67]),
+        headers: { 'Content-Type': 'image/png' },
+      })
+    ).status,
+    415,
+  )
 
   const input = {
     title: '今天的小事',
@@ -212,6 +256,10 @@ test('authenticated publishing workflow, drafts, validation and restart persiste
   await app.close()
   app = await start(dbPath)
   assert.equal((await app.request('/api/session')).data.configured, true)
+  assert.equal(
+    (await app.request(upload.data.image.url, { auth: false })).status,
+    200,
+  )
   assert.equal(
     (await app.request('/api/posts', { auth: false })).data.posts.length,
     1,

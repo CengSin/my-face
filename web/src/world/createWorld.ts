@@ -1,4 +1,10 @@
 import * as THREE from 'three'
+import {
+  ROTATION_PER_PIXEL,
+  rotationVelocity,
+  stepRotation,
+  type RotationSample,
+} from './rotation'
 
 type Palette = {
   sky: number
@@ -398,6 +404,73 @@ export function createWorld(canvas: HTMLCanvasElement): WorldHandle {
   let running = true
   let dirty = true
   let lastTime = performance.now()
+  let rotation = 0
+  let velocity = 0
+  let activePointer: number | null = null
+  let dragStarted = false
+  let startX = 0
+  let startY = 0
+  let lastX = 0
+  let samples: RotationSample[] = []
+
+  const drift = () => (!reduced && activePointer === null
+    ? Math.sin(elapsed * 0.18) * 0.04
+    : 0)
+
+  function onPointerDown(event: PointerEvent) {
+    if (!event.isPrimary || event.button !== 0) return
+    activePointer = event.pointerId
+    dragStarted = false
+    startX = event.clientX
+    startY = event.clientY
+    lastX = event.clientX
+    rotation = island.rotation.y - drift()
+    velocity = 0
+    samples = [{ x: event.clientX, time: event.timeStamp }]
+    canvas.setPointerCapture(event.pointerId)
+    canvas.classList.add('is-dragging')
+  }
+
+  function onPointerMove(event: PointerEvent) {
+    if (event.pointerId !== activePointer) return
+    const totalX = event.clientX - startX
+    const totalY = event.clientY - startY
+    if (!dragStarted) {
+      if (Math.abs(totalX) < 6) return
+      if (event.pointerType === 'touch' && Math.abs(totalX) <= Math.abs(totalY))
+        return
+      dragStarted = true
+    }
+    event.preventDefault()
+    rotation += (event.clientX - lastX) * ROTATION_PER_PIXEL
+    lastX = event.clientX
+    samples.push({ x: event.clientX, time: event.timeStamp })
+    samples = samples.filter((sample) => event.timeStamp - sample.time <= 120)
+    dirty = true
+  }
+
+  function finishDrag(event: PointerEvent) {
+    if (event.pointerId !== activePointer) return
+    if (dragStarted) {
+      samples.push({ x: event.clientX, time: event.timeStamp })
+      samples = samples.filter((sample) => event.timeStamp - sample.time <= 120)
+      velocity = reduced ? 0 : rotationVelocity(samples)
+    }
+    if (!reduced) rotation -= Math.sin(elapsed * 0.18) * 0.04
+    activePointer = null
+    dragStarted = false
+    samples = []
+    canvas.classList.remove('is-dragging')
+    if (canvas.hasPointerCapture(event.pointerId))
+      canvas.releasePointerCapture(event.pointerId)
+    dirty = true
+  }
+
+  canvas.addEventListener('pointerdown', onPointerDown)
+  canvas.addEventListener('pointermove', onPointerMove)
+  canvas.addEventListener('pointerup', finishDrag)
+  canvas.addEventListener('pointercancel', finishDrag)
+  canvas.addEventListener('lostpointercapture', finishDrag)
 
   function applyWeather(w: number) {
     dirty = true
@@ -465,8 +538,15 @@ export function createWorld(canvas: HTMLCanvasElement): WorldHandle {
     const storm = THREE.MathUtils.clamp((weather - 2) / 1, 0, 1)
     const wind = 0.15 + weather * 0.18
 
+    if (activePointer === null && !reduced && velocity !== 0) {
+      const next = stepRotation(rotation, velocity, dt)
+      rotation = next.rotation
+      velocity = next.velocity
+      dirty = true
+    }
+    island.rotation.y = rotation + drift()
+
     if (!reduced) {
-      island.rotation.y = Math.sin(elapsed * 0.18) * 0.04
       tree.rotation.z = Math.sin(elapsed * 2.1) * 0.04 * (0.4 + wind)
       cloudA.position.x = Math.sin(elapsed * 0.12) * 0.35
       cloudB.position.x = Math.cos(elapsed * 0.1) * 0.45
@@ -527,6 +607,7 @@ export function createWorld(canvas: HTMLCanvasElement): WorldHandle {
     setWeather: applyWeather,
     setReducedMotion: (value) => {
       reduced = value
+      if (value) velocity = 0
       dirty = true
     },
     resize,
@@ -534,6 +615,11 @@ export function createWorld(canvas: HTMLCanvasElement): WorldHandle {
       running = false
       cancelAnimationFrame(raf)
       document.removeEventListener('visibilitychange', onVisibility)
+      canvas.removeEventListener('pointerdown', onPointerDown)
+      canvas.removeEventListener('pointermove', onPointerMove)
+      canvas.removeEventListener('pointerup', finishDrag)
+      canvas.removeEventListener('pointercancel', finishDrag)
+      canvas.removeEventListener('lostpointercapture', finishDrag)
       renderer.dispose()
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh
